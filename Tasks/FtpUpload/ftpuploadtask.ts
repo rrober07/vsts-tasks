@@ -2,13 +2,14 @@
 /// <reference path="../../definitions/node.d.ts" />
 /// <reference path="../../definitions/Q.d.ts" />
 
-
 import fs = require('fs');
 import os = require('os');
 import path = require('path');
 import tl = require('vsts-task-lib/task');
 import url = require('url');
 
+var SortedSet = require('collections/sorted-set');
+var Client = require('ftp');
 
 var win = os.type().match(/^Win/);
 tl.debug('win: ' + win);
@@ -25,10 +26,6 @@ function makeAbsolute(normalizedPath: string): string {
     return result;
 }
 
-function failTask(message: string) {
-    tl.setResult(tl.TaskResult.Failed, message);
-}
-
 // server endpoint
 var serverEndpoint = tl.getInput('serverEndpoint', true);
 var serverEndpointUrl : url.Url = url.parse(tl.getEndpointUrl(serverEndpoint, false));
@@ -40,7 +37,7 @@ var password = serverEndpointAuth['parameters']['password'];
 // the root location which will be uploaded from
 var rootFolder: string = makeAbsolute(path.normalize(tl.getPathInput('rootFolder', true).trim()));
 if (!tl.exist(rootFolder)) {
-    failTask('The specified root folder: ' + rootFolder + ' does not exist.');
+    failTask('The specified root folder does not exist: ' + rootFolder );
 }
 
 var clean: boolean = tl.getBoolInput('clean', true);
@@ -65,12 +62,26 @@ function findFiles(): string[] {
 
     for (var i = 0; i < filePatterns.length; i++) {
         if (filePatterns[i] == '*') {
-            tl.debug('* matching everything, total: ' + allFiles);
-            return allFiles;
+            if(flatten){
+                var filesToUpload = [rootFolder]; // add root folder only
+                // strip out all other directories
+                for(var file of allFiles){
+                    var stats = tl.stats(file);
+                    if (stats.isFile()) {
+                        tl.debug('adding file: ' + file);
+                        filesToUpload.push(file);
+                    } 
+                }
+                tl.debug('* matching everything, total: ' + filesToUpload.length);
+                return filesToUpload;
+            } else {
+                tl.debug('* matching everything, total: ' + allFiles.length);
+                return allFiles;
+            }
         }
     }
 
-    tl.debug('using: ' + filePatterns.length + ' filePatterns: ' + filePatterns + ' to search for files.');
+    tl.debug('searching for files using: ' + filePatterns.length + ' filePatterns: ' + filePatterns);
 
     // minimatch options
     var matchOptions = { matchBase: true };
@@ -84,7 +95,6 @@ function findFiles(): string[] {
     }
 
     // use a set to avoid duplicates
-    var SortedSet = require('collections/sorted-set');
     var matchingFilesSet = new SortedSet();
 
     for (var i = 0; i < filePatterns.length; i++) {
@@ -103,7 +113,7 @@ function findFiles(): string[] {
                 if (stats.isFile()) {
                     var parent = path.normalize(path.dirname(match));
                     if (matchingFilesSet.add(parent)) {
-                        tl.debug('adding folder:' + parent);
+                        tl.debug('adding folder: ' + parent);
                     }
                 }
             }
@@ -114,89 +124,100 @@ function findFiles(): string[] {
 
 var remotePath = tl.getInput('remotePath', true).trim();
 
-var Client = require('ftp');
-var c = new Client();
+var filesUploaded: number = 0;
+var filesSkipped: number = 0; // already exists and overwrite mode off
+var directoriesProcessed: number = 0;
 
 var files = findFiles();
 
-var filesUploaded: number = 0;
-var filesSkipped: number = 0; // already exists and overwrite mode off
-var directoriesCreated: number = 0;
-var directoriesSkipped: number = 0; // already exists
+var c = new Client();
 
 function checkDone(): void {
-    var total: number = filesUploaded + filesSkipped + directoriesCreated + directoriesSkipped;
+    var total: number = filesUploaded + filesSkipped + directoriesProcessed;
     var remaining: number = files.length - total;
     tl.debug(
         'filesUploaded: ' + filesUploaded +
-        ', filesSkipped: ' + filesUploaded +
-        ', directoriesCreated: ' + directoriesCreated +
-        ', directoriesSkipped: ' + directoriesSkipped +
+        ', filesSkipped: ' + filesSkipped +
+        ', directoriesProcessed: ' + directoriesProcessed +
         ', total: ' + total + ', remaining: ' + remaining);
     if (remaining == 0) {
         c.end();
-        tl.setResult(tl.TaskResult.Succeeded,
-            'Ftp upload successful' +
-            '\nhost: ' + serverEndpointUrl.host +
-            '\npath: ' + remotePath +
-            '\n files uploaded: ' + filesUploaded +
-            '\n files skipped: ' + filesSkipped +
-            '\n directories created: ' + directoriesCreated +
-            '\n directories skipped: ' + directoriesSkipped
-        );
+        tl.setResult(tl.TaskResult.Succeeded, 'FTP upload successful' + getFinalStatusMessage());
     }
 }
 
+function getFinalStatusMessage() : string {
+    return '\nhost: ' + serverEndpointUrl.host +
+        '\npath: ' + remotePath +
+        '\nfiles uploaded: ' + filesUploaded +
+        '\nfiles skipped: ' + filesSkipped +
+        '\ndirectories processed: ' + directoriesProcessed;
+}
+
+function failTask(message: string) {
+    if(files) {
+        var total: number = filesUploaded + filesSkipped + directoriesProcessed;
+        var remaining: number = files.length - total;
+        message = message + getFinalStatusMessage() + '\nunprocessed files & directories: '+ remaining;
+    }
+    tl.setResult(tl.TaskResult.Failed, message);
+}
 
 function uploadFiles() {
-    var Set = require('collections/set');
-    var createdDirectories = new Set();
-
-    tl.debug('connected to ftp host:' + serverEndpointUrl.host);
     tl.debug('files to process: ' + files.length);
-
-    if (flatten) {
-        //all directories are skipped, so only need to create the root.
-        createRemoteDirectory(remotePath);
-    }
 
     files.forEach((file) => {
         tl.debug('file: ' + file);
         var remoteFile: string = flatten ?
             path.join(remotePath, path.basename(file)) :
             path.join(remotePath, file.substring(rootFolder.length));
+
+        remoteFile = remoteFile.replace(/\\/gi, "/"); // use forward slashes always
         tl.debug('remoteFile: ' + remoteFile);
 
         var stats = tl.stats(file);
-        //ensure directory is created
-        if (stats.isDirectory()) {
-            if(!flatten){
-                createRemoteDirectory(remoteFile);
-            } else {
-                tl.debug('skipping remote directory: ' + remoteFile);
-                directoriesSkipped++;
-                checkDone();
-            }
-        }
-        if (stats.isFile()) { // upload files
+        if (stats.isDirectory()) { // create directories if necessary
+            createRemoteDirectory(remoteFile);
+        } else if (stats.isFile()) { // upload files
             if (overwrite) {
                 uploadFile(file, remoteFile);
             } else {
-                //todo optimize directory reading so it is only done once
-                var remoteDirname = path.normalize(path.dirname(remoteFile));
-                var remoteBasename = path.basename(remoteFile);
-                c.list(remoteDirname, function (err, list) {
-                    for (var remote of list) {
-                        if (remote.name == remoteBasename) {
-                            tl.debug('skipping file: ' + file + ' remote: ' + remoteFile + ' because it already exists');
-                            filesSkipped++;
-                            checkDone();
-                            return;
-                        }
+                remoteExists(remoteFile, function(exists: boolean){
+                    if(!exists){
+                        uploadFile(file, remoteFile);
+                    } else {
+                        tl.debug('skipping file: ' + file + ' remote: ' + remoteFile + ' because it already exists');
+                        filesSkipped++;
+                        checkDone();
                     }
-                    uploadFile(file, remoteFile);
                 });
             }
+        }
+    });
+}
+
+// only called in no overwrite mode
+function remoteExists(remoteFile : string, callback){
+    var remoteDirname = path.normalize(path.dirname(remoteFile));
+    var remoteBasename = path.basename(remoteFile);
+    //todo -- optimize to cache information
+    c.list(remoteDirname, function (err, list) {
+        if(err){
+            if (err.code == 550){ // standard not found error
+                callback(false);
+            } else { // some other error -- just return false --
+                callback(false);
+            }
+            return false;
+        } else {
+            for (var remote of list) {
+                if (remote.name == remoteBasename) {
+                    callback(true);
+                    return;
+                }
+            }
+            callback(false);
+            return true;
         }
     });
 }
@@ -208,10 +229,8 @@ function createRemoteDirectory(remoteDirectory: string) {
             c.end();
             failTask('Unable to create remote directory: ' + remoteDirectory + ' due to error: ' + err);
         }
-        tl.debug('remote directory successfully created: ' + remoteDirectory);
-        if(!flatten){ //
-            directoriesCreated++;
-        }
+        tl.debug('remote directory successfully created/verified: ' + remoteDirectory);
+        directoriesProcessed++;
         checkDone();
     });
 }
@@ -231,14 +250,22 @@ function uploadFile(file: string, remoteFile) {
 }
 
 c.on('ready', function () {
+    tl.debug('connected to ftp host:' + serverEndpointUrl.host);
+
     if (clean) {
         tl.debug('cleaning remote: ' + remotePath);
-        c.rmdir(remotePath, true, function (err) {
-            if (err) {
-                c.destroy();
-                failTask('Unable to clean remote folder: ' + remotePath + ' error: ' + err);
+        remoteExists(remotePath, function(exists){
+            if(exists){
+                c.rmdir(remotePath, true, function (err) {
+                    if (err) {
+                        c.destroy();
+                        failTask('Unable to clean remote folder: ' + remotePath + ' error: ' + err);
+                    }
+                    uploadFiles();
+                });
+            } else {
+                uploadFiles();
             }
-            uploadFiles();
         });
     } else {
         tl.debug('skipping clean: ' + remotePath);
@@ -246,9 +273,7 @@ c.on('ready', function () {
     }
 });
 
-var secure = serverEndpointUrl.protocol == 'ftps:' ? true : false;
+var secure = serverEndpointUrl.protocol.toLowerCase() == 'ftps:' ? true : false;
 tl.debug('secure ftp=' + secure);
 
 c.connect({ 'host': serverEndpointUrl.host, 'user': username, 'password': password, 'secure': secure });
-
-

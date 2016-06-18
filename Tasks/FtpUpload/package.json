@@ -1,7 +1,7 @@
 {
-  "name": "ftp",
+  "name": "FTP",
   "version": "1.0.1",
-  "description": "Ftp Upload Task",
+  "description": "FTP Upload Task",
   "main": "ftpuploadtask.js",
   "repository": {
     "type": "git",

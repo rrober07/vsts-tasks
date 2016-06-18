@@ -1,7 +1,7 @@
 {
-  "loc.friendlyName": "Ftp Upload",
-  "loc.helpMarkDown": "Upload files to an FTP server using either FTP, or secure FTPS",
-  "loc.description": "Ftp Upload",
+  "loc.friendlyName": "FTP Upload",
+  "loc.helpMarkDown": "Upload files to a remote machine using the File Transfer Protocol (FTP), or securely with FTPS.",
+  "loc.description": "FTP Upload",
   "loc.instanceNameFormat": "FTP Upload: $(rootFolder)",
   "loc.group.displayName.advanced": "Advanced",
   "loc.input.label.serverEndpoint": "FTP Service Endpoint",
