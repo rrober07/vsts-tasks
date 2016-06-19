@@ -21,7 +21,7 @@
         {
           "name": "advanced",
           "displayName": "Advanced",
-          "isExpanded": false
+          "isExpanded": true
         }
     ],
   "inputs": [
@@ -31,15 +31,15 @@
       "label": "FTP Service Endpoint",
       "defaultValue": "",
       "required": true,
-      "helpMarkDown": "Select the service endpoint for your FTP server.  To create one, click the Manage link and create a new Generic Service Endpoint, enter the FTP server URL for the server URL, e.g. ftps://server.example.com, and required credentials."
+      "helpMarkDown": "Select the service endpoint for your FTP server.  To create one, click the Manage link and create a new Generic Service Endpoint, enter the FTP server URL for the server URL, e.g. <b>`ftp://server.example.com`</b>, and required credentials.<p>Secure connections will always be made regardless of the specified protocol (<b>`ftp://`</b> or <b>`ftps://`</b>) if the target server supports FTPS.  To allow only secure connections, use the <b>`ftps://`</b> protocol, e.g. <b>`ftps://server.example.com`</b>.  Connections to servers not supporting FTPS will fail if <b>`ftps://`</b> is specified."
     },
     {
       "name": "rootFolder",
       "type": "filePath",
-      "label": "Source Folder",
+      "label": "Source folder",
       "defaultValue": "",
       "required": true,
-      "helpMarkDown": ""
+      "helpMarkDown": "The source folder to upload files from."
     },
     {
       "name": "filePatterns",
@@ -56,18 +56,18 @@
     {
       "name": "remotePath",
       "type": "string",
-      "label": "Remote directory to upload files",
+      "label": "Remote directory",
       "defaultValue": "/upload/$(Build.BuildId)/",
       "required": true,
-      "helpMarkDown": ""
+      "helpMarkDown": "Upload files to this directory on the remote FTP server."
     },
     {
         "name": "clean",
         "type": "boolean",
-        "label": "Clean Remote Folder",
+        "label": "Clean remote directory",
         "defaultValue": "false",
         "required": true,
-        "helpMarkDown": "Delete the remote directory location before uploading",
+        "helpMarkDown": "Recursively delete all contents of the remote directory before uploading.",
         "groupName": "advanced"
     },
     {
@@ -76,16 +76,16 @@
         "label": "Overwrite",
         "defaultValue": "true",
         "required": true,
-        "helpMarkDown": "Overwrite existing files in the remote location",
+        "helpMarkDown": "Overwrite existing files in the remote directory.",
         "groupName": "advanced"
     },
     {
-        "name": "flatten",
+        "name": "preservePaths",
         "type": "boolean",
-        "label": "Flatten Paths",
+        "label": "Preserve file paths",
         "defaultValue": "false",
         "required": true,
-        "helpMarkDown": "Flatten the paths at the remote location",
+        "helpMarkDown": "If selected, the relative local directory structure is recreated under the remote directory where files are uploaded.  Otherwise, files are uploaded directly to the remote directory without creating additional subdirectories.<p>For example, suppose your source folder is: <b>`/home/user/source/`</b> and contains the file: <b>`foo/bar/foobar.txt`</b>, and your remote directory is: <b>`/uploads/`</b>.<br>If selected, the file is uploaded to: <b>`/uploads/foo/bar/foobar.txt`</b>.  Otherwise, to: <b>`/uploads/foobar.txt`</b>.",
         "groupName": "advanced"
     }
   ],  "execution": {

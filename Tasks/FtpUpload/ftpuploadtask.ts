@@ -42,7 +42,7 @@ if (!tl.exist(rootFolder)) {
 
 var clean: boolean = tl.getBoolInput('clean', true);
 var overwrite: boolean = tl.getBoolInput('overwrite', true);
-var flatten: boolean = tl.getBoolInput('flatten', true);
+var preservePaths: boolean = tl.getBoolInput('preservePaths', true);
 
 function findFiles(): string[] {
     tl.debug('Searching for files to upload');
@@ -51,8 +51,7 @@ function findFiles(): string[] {
     if (rootFolderStats.isFile()) {
         var file = rootFolder;
         tl.debug(file + ' is a file. Ignoring all file patterns');
-        var parent = path.normalize(path.dirname(file));
-        return [parent, file];
+        return [file];
     }
 
     var allFiles = tl.find(rootFolder);
@@ -62,9 +61,12 @@ function findFiles(): string[] {
 
     for (var i = 0; i < filePatterns.length; i++) {
         if (filePatterns[i] == '*') {
-            if(flatten){
-                var filesToUpload = [rootFolder]; // add root folder only
-                // strip out all other directories
+            if(preservePaths){
+                tl.debug('* matching everything, total: ' + allFiles.length);
+                return allFiles;
+            } else {
+                var filesToUpload = [];
+                // strip out all directories
                 for(var file of allFiles){
                     var stats = tl.stats(file);
                     if (stats.isFile()) {
@@ -74,9 +76,6 @@ function findFiles(): string[] {
                 }
                 tl.debug('* matching everything, total: ' + filesToUpload.length);
                 return filesToUpload;
-            } else {
-                tl.debug('* matching everything, total: ' + allFiles.length);
-                return allFiles;
             }
         }
     }
@@ -134,7 +133,7 @@ var c = new Client();
 
 function checkDone(): void {
     var total: number = filesUploaded + filesSkipped + directoriesProcessed;
-    var remaining: number = files.length - total;
+    var remaining: number = files.length - total + 1; // add one for the root remotePath
     tl.debug(
         'filesUploaded: ' + filesUploaded +
         ', filesSkipped: ' + filesSkipped +
@@ -166,11 +165,13 @@ function failTask(message: string) {
 function uploadFiles() {
     tl.debug('files to process: ' + files.length);
 
+    createRemoteDirectory(remotePath); // ensure root remote location exists
+
     files.forEach((file) => {
         tl.debug('file: ' + file);
-        var remoteFile: string = flatten ?
-            path.join(remotePath, path.basename(file)) :
-            path.join(remotePath, file.substring(rootFolder.length));
+        var remoteFile: string = preservePaths ?
+            path.join(remotePath, file.substring(rootFolder.length)) :
+            path.join(remotePath, path.basename(file));
 
         remoteFile = remoteFile.replace(/\\/gi, "/"); // use forward slashes always
         tl.debug('remoteFile: ' + remoteFile);
