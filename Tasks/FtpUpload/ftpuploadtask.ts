@@ -131,14 +131,15 @@ var files = findFiles();
 
 var c = new Client();
 
-function checkDone(): void {
+function checkDone(message: string): void {
     var total: number = filesUploaded + filesSkipped + directoriesProcessed;
     var remaining: number = files.length - total + 1; // add one for the root remotePath
-    tl.debug(
-        'filesUploaded: ' + filesUploaded +
-        ', filesSkipped: ' + filesSkipped +
-        ', directoriesProcessed: ' + directoriesProcessed +
-        ', total: ' + total + ', remaining: ' + remaining);
+    console.log( 
+        'files uploaded: ' + filesUploaded +
+        ', files skipped: ' + filesSkipped +
+        ', directories processed: ' + directoriesProcessed +
+        ', total: ' + total + ', remaining: ' + remaining +
+        ', '+message);
     if (remaining == 0) {
         c.end();
         tl.setResult(tl.TaskResult.Succeeded, 'FTP upload successful' + getFinalStatusMessage());
@@ -187,9 +188,8 @@ function uploadFiles() {
                     if(!exists){
                         uploadFile(file, remoteFile);
                     } else {
-                        tl.debug('skipping file: ' + file + ' remote: ' + remoteFile + ' because it already exists');
                         filesSkipped++;
-                        checkDone();
+                        checkDone('skipping file: ' + file + ' remote: ' + remoteFile + ' because it already exists');
                     }
                 });
             }
@@ -230,9 +230,8 @@ function createRemoteDirectory(remoteDirectory: string) {
             c.end();
             failTask('Unable to create remote directory: ' + remoteDirectory + ' due to error: ' + err);
         }
-        tl.debug('remote directory successfully created/verified: ' + remoteDirectory);
         directoriesProcessed++;
-        checkDone();
+        checkDone('remote directory successfully created/verified: ' + remoteDirectory);
     });
 }
 
@@ -243,9 +242,8 @@ function uploadFile(file: string, remoteFile) {
             c.end();
             failTask('upload failed: ' + remoteFile + ' due to error: ' + err);
         } else {
-            tl.debug('successfully uploaded: ' + remoteFile);
             filesUploaded++;
-            checkDone();
+            checkDone('successfully uploaded: '+ file + ' to: ' + remoteFile);
         }
     });
 }
