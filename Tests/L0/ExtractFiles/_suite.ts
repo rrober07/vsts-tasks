@@ -27,8 +27,7 @@ describe('ExtractFiles Suite', function() {
     });
 
     var responseFiles = ['extractFilesWin.json', 'extractFilesLinux.json'];
-    //var responseFiles = ['extractFilesLinux.json'];
-
+    
     responseFiles.forEach((responseFile) => {
         var isWin = responseFile == 'extractFilesWin.json'; 
         var os = isWin ? 'Windows' : 'Linux';
